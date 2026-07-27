@@ -1,0 +1,30 @@
+.gitignore
+# Build artifacts
+obj/
+bin/
+*.o
+*.a
+*.so
+
+# Generated certificates
+certs/
+
+# Log files
+logs/*.log
+
+# IDE and editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# CMake/build
+CMakeLists.txt.user
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+
+# Dependencies
+*.out
