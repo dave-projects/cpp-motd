@@ -13,6 +13,9 @@ using boost::asio::ip::tcp;
 namespace ssl = boost::asio::ssl;
 namespace http = boost::beast::http;
 
+// Forward declaration
+class ConnectionHandler;
+
 class MOTDServer {
 public:
     MOTDServer(boost::asio::io_context& io_context, int port,
@@ -31,7 +34,8 @@ private:
     
     ssl::context& get_ssl_context();
     void accept_connection();
-    void handle_connection(std::shared_ptr<ssl::stream<tcp::socket>> socket);
+    void handle_connection(boost::shared_ptr<ConnectionHandler> connection,
+                          const boost::system::error_code& error);
     std::string read_motd();
     void write_motd(const std::string& motd);
     
