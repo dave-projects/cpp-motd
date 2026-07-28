@@ -122,9 +122,11 @@ private:
                         boost::asio::placeholders::error));
             } catch (const std::exception& e) {
                 std::cerr << "Request processing error: " << e.what() << std::endl;
+                close_connection();
             }
         } else if (error) {
             std::cerr << "Read error: " << error.message() << std::endl;
+            close_connection();
         }
     }
     
@@ -132,6 +134,28 @@ private:
         if (error) {
             std::cerr << "Write error: " << error.message() << std::endl;
         }
+        // Properly shutdown SSL connection after write completes
+        shutdown_ssl();
+    }
+    
+    void shutdown_ssl() {
+        // Initiate SSL shutdown
+        ssl_socket_.async_shutdown(
+            boost::bind(&ConnectionHandler::handle_shutdown, shared_from_this(),
+                boost::asio::placeholders::error));
+    }
+    
+    void handle_shutdown(const boost::system::error_code& error) {
+        if (error) {
+            std::cout << "SSL shutdown error: " << error.message() << std::endl;
+        }
+        // Close the underlying socket
+        close_connection();
+    }
+    
+    void close_connection() {
+        boost::system::error_code ec;
+        ssl_socket_.lowest_layer().close(ec);
     }
     
     std::string handle_get() {
