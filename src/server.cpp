@@ -44,24 +44,39 @@ private:
     
     void handle_handshake(const boost::system::error_code& error) {
         if (!error) {
-            boost::asio::async_read(ssl_socket_,
-                boost::asio::buffer(buffer_),
-                boost::bind(&ConnectionHandler::handle_read, shared_from_this(),
-                    boost::asio::placeholders::error,
-                    boost::asio::placeholders::bytes_transferred));
+            std::cout << "SSL handshake successful" << std::endl;
+            // Start reading data after successful handshake
+            async_read_request();
         } else {
             std::cerr << "Handshake failed: " << error.message() << std::endl;
         }
     }
     
+    void async_read_request() {
+        // Use a streambuf for proper HTTP message handling
+        boost::asio::async_read(ssl_socket_,
+            buffer_,
+            boost::asio::transfer_at_least(1),
+            boost::bind(&ConnectionHandler::handle_read, shared_from_this(),
+                boost::asio::placeholders::error,
+                boost::asio::placeholders::bytes_transferred));
+    }
+    
     void handle_read(const boost::system::error_code& error, size_t bytes_transferred) {
+        std::cout << "handle_read called with error: " << error.message() << ", bytes: " << bytes_transferred << std::endl;
+        
         if (!error && bytes_transferred > 0) {
             try {
-                std::string request_str(buffer_.begin(), buffer_.begin() + bytes_transferred);
-                std::istringstream iss(request_str);
+                // Extract data from streambuf
+                std::istream is(&buffer_);
+                std::string request_str;
+                std::getline(is, request_str); // Read first line
                 
                 std::string method, path, http_version;
+                std::istringstream iss(request_str);
                 iss >> method >> path >> http_version;
+                
+                std::cout << "Method: " << method << ", Path: " << path << std::endl;
                 
                 // Get client IP
                 std::string client_ip = ssl_socket_.lowest_layer().remote_endpoint().address().to_string();
@@ -69,17 +84,18 @@ private:
                 // Read headers to find Content-Length
                 std::string line;
                 size_t content_length = 0;
-                while (std::getline(iss, line) && line != "\r") {
+                while (std::getline(is, line) && line != "\r") {
                     if (line.find("Content-Length:") != std::string::npos) {
                         content_length = std::stoi(line.substr(16));
                     }
                 }
                 
-                // Extract body if present
+                // Read body if present
                 std::string body;
-                std::string remaining((std::istreambuf_iterator<char>(iss)),
-                                     std::istreambuf_iterator<char>());
-                body = remaining.substr(remaining.find("\r\n\r\n") + 4);
+                if (content_length > 0) {
+                    body.resize(content_length);
+                    is.read(&body[0], content_length);
+                }
                 
                 // Handle requests
                 std::string response;
@@ -107,6 +123,8 @@ private:
             } catch (const std::exception& e) {
                 std::cerr << "Request processing error: " << e.what() << std::endl;
             }
+        } else if (error) {
+            std::cerr << "Read error: " << error.message() << std::endl;
         }
     }
     
@@ -193,7 +211,7 @@ private:
     ssl::stream<tcp::socket> ssl_socket_;
     std::shared_ptr<Logger> logger_;
     std::string& motd_file_;
-    std::array<char, 8192> buffer_;
+    boost::asio::streambuf buffer_;
 };
 
 MOTDServer::MOTDServer(boost::asio::io_context& io_context, int port,
