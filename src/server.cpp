@@ -9,6 +9,9 @@
 #include <boost/asio/spawn.hpp>
 #include <boost/json.hpp>
 #include <memory>
+#include <openssl/ssl.h>
+#include <openssl/x509.h>
+#include <openssl/x509v3.h>
 
 namespace json = boost::json;
 
@@ -44,12 +47,30 @@ private:
     
     void handle_handshake(const boost::system::error_code& error) {
         if (!error) {
-            std::cout << "SSL handshake successful" << std::endl;
+            std::string client_cn = get_client_common_name();
+            std::cout << "SSL handshake successful with client: " << client_cn << std::endl;
             // Start reading data after successful handshake
             async_read_request();
         } else {
             std::cerr << "Handshake failed: " << error.message() << std::endl;
         }
+    }
+
+    std::string get_client_common_name() {
+        X509* cert = SSL_get_peer_certificate(ssl_socket_.native_handle());
+        if (!cert) {
+            return "unknown";
+        }
+
+        char cn[256] = {0};
+        X509_NAME* subject_name = X509_get_subject_name(cert);
+        int cn_length = X509_NAME_get_text_by_NID(subject_name, NID_commonName, cn, sizeof(cn));
+        X509_free(cert);
+
+        if (cn_length < 0) {
+            return "unknown";
+        }
+        return std::string(cn);
     }
     
     void async_read_request() {
@@ -255,6 +276,8 @@ MOTDServer::MOTDServer(boost::asio::io_context& io_context, int port,
         ssl::context::single_dh_use);
     ssl_context_->use_certificate_chain_file(cert_file);
     ssl_context_->use_private_key_file(key_file, ssl::context::pem);
+    ssl_context_->load_verify_file("certs/ca.crt");
+    ssl_context_->set_verify_mode(ssl::verify_peer | ssl::verify_fail_if_no_peer_cert);
     
     // Load initial MOTD
     current_motd_ = read_motd();

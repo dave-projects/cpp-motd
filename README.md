@@ -65,7 +65,13 @@ The server will:
 - Listen on `https://localhost:8443`
 - Store MOTD in `data/motd.txt`
 - Log activity to `logs/motd.log`
-- Generate SSL certificates if they don't exist
+- Require a valid client certificate signed by the local CA
+
+Generate development certificates before running:
+
+```bash
+make certs
+```
 
 ## Using the Client
 
@@ -83,7 +89,7 @@ The server will:
 
 ### Verify SSL (development only)
 
-For development, the client will accept self-signed certificates:
+For development, the client can skip server certificate verification:
 
 ```bash
 ./bin/motd-client --get --insecure
