@@ -12,16 +12,6 @@ A C++ HTTPS REST server that provides a message of the day (MOTD) resource with 
 - **C++ Client**: Command-line client for interacting with the server
 - **Linux Compatible**: Built with standard Linux development tools
 
-## Features
-
-- **HTTPS REST API** using Boost.ASIO, Boost.Beast, and Boost.JSON
-- **GET Method**: Retrieve the current message of the day
-- **PUT Method**: Update the message of the day
-- **Persistent Storage**: MOTD stored in file for persistence across server restarts
-- **Comprehensive Logging**: Activity logs with timestamps, client IP, access type, and modification details
-- **C++ Client**: Command-line client for interacting with the server
-- **Linux Compatible**: Built with standard Linux development tools
-
 ## Project Structure
 
 ```
