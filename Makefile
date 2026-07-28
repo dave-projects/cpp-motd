@@ -4,7 +4,7 @@ CXX := g++
 CXXFLAGS := -std=c++17 -Wall -Wextra -O2
 INCLUDE_DIRS := -Iinclude
 LIB_DIRS := 
-LIBS := -lboost_system -lboost_thread -lssl -lcrypto -lpthread
+LIBS := -lboost_system -lboost_thread -lboost_json -lssl -lcrypto -lpthread
 
 SRC_DIR := src
 INCLUDE_DIR := include
