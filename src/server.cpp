@@ -240,12 +240,17 @@ void MOTDServer::accept_connection() {
     
     acceptor_->async_accept(new_connection->socket(),
         boost::bind(&MOTDServer::handle_connection, this,
+            new_connection,
             boost::asio::placeholders::error));
 }
 
-void MOTDServer::handle_connection(std::shared_ptr<ssl::stream<tcp::socket>> socket) {
-    // Note: This implementation uses synchronous approach
-    // The async flow is in ConnectionHandler
+void MOTDServer::handle_connection(ConnectionHandler::pointer connection,
+                                   const boost::system::error_code& error) {
+    if (!error) {
+        connection->start();
+    } else {
+        logger_->info("Accept error: " + error.message());
+    }
     accept_connection();
 }
 
