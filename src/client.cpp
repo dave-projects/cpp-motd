@@ -62,9 +62,14 @@ std::string MOTDClient::send_request(const std::string& method, const std::strin
         ssl::context::default_workarounds |
         ssl::context::no_sslv2 |
         ssl::context::single_dh_use);
+    ctx.use_certificate_chain_file("certs/client.crt");
+    ctx.use_private_key_file("certs/client.key", ssl::context::pem);
     
     if (!verify_ssl_) {
         ctx.set_verify_mode(ssl::context::verify_none);
+    } else {
+        ctx.load_verify_file("certs/ca.crt");
+        ctx.set_verify_mode(ssl::context::verify_peer);
     }
     
     // Resolve host

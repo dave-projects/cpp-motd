@@ -26,15 +26,23 @@ SERVER_BIN := $(BIN_DIR)/motd-server
 CLIENT_BIN := $(BIN_DIR)/motd-client
 
 # Certificate files
-KEY_FILE := certs/server.key
-CERT_FILE := certs/server.crt
+CERT_DIR := certs
+CA_KEY_FILE := $(CERT_DIR)/ca.key
+CA_CERT_FILE := $(CERT_DIR)/ca.crt
+SERVER_KEY_FILE := $(CERT_DIR)/server.key
+SERVER_CERT_FILE := $(CERT_DIR)/server.crt
+CLIENT_KEY_FILE := $(CERT_DIR)/client.key
+CLIENT_CERT_FILE := $(CERT_DIR)/client.crt
 
 # Default target
 all: build
 
 # Create necessary directories
-$(BIN_DIR) $(OBJ_DIR) $(DATA_DIR) $(LOG_DIR) certs:
+$(BIN_DIR) $(OBJ_DIR) $(DATA_DIR) $(LOG_DIR):
 	@mkdir -p $@
+
+certs-dir:
+	@mkdir -p $(CERT_DIR)
 
 # Build all targets
 build: directories $(SERVER_BIN) $(CLIENT_BIN)
@@ -58,15 +66,31 @@ $(CLIENT_OBJ): $(CLIENT_SRC) | $(OBJ_DIR)
 	$(CXX) $(CXXFLAGS) $(INCLUDE_DIRS) -c $< -o $@
 
 # Directories target
-directories: $(BIN_DIR) $(OBJ_DIR) $(DATA_DIR) $(LOG_DIR) certs
+directories: $(BIN_DIR) $(OBJ_DIR) $(DATA_DIR) $(LOG_DIR) certs-dir
 
-# Generate self-signed certificates (for development)
-certs: $(KEY_FILE) $(CERT_FILE)
+# Generate CA, server, and client certificates for mTLS (development)
+certs: $(CA_KEY_FILE) $(CA_CERT_FILE) $(SERVER_KEY_FILE) $(SERVER_CERT_FILE) $(CLIENT_KEY_FILE) $(CLIENT_CERT_FILE)
 
-$(KEY_FILE) $(CERT_FILE): | certs
-	@echo "Generating self-signed SSL certificates..."
-	openssl req -x509 -newkey rsa:2048 -keyout $(KEY_FILE) -out $(CERT_FILE) \
-		-days 365 -nodes -subj "/CN=localhost" 2>/dev/null || true
+$(CA_KEY_FILE) $(CA_CERT_FILE): | certs-dir
+	@echo "Generating CA certificate..."
+	openssl req -x509 -newkey rsa:2048 -keyout $(CA_KEY_FILE) -out $(CA_CERT_FILE) \
+		-days 365 -nodes -subj "/CN=cpp-motd-ca" 2>/dev/null
+
+$(SERVER_KEY_FILE) $(SERVER_CERT_FILE): $(CA_KEY_FILE) $(CA_CERT_FILE) | certs-dir
+	@echo "Generating server certificate signed by CA..."
+	openssl req -newkey rsa:2048 -keyout $(SERVER_KEY_FILE) -out $(CERT_DIR)/server.csr \
+		-nodes -subj "/CN=localhost" 2>/dev/null
+	openssl x509 -req -in $(CERT_DIR)/server.csr -CA $(CA_CERT_FILE) -CAkey $(CA_KEY_FILE) \
+		-CAcreateserial -out $(SERVER_CERT_FILE) -days 365 -sha256 2>/dev/null
+	@rm -f $(CERT_DIR)/server.csr
+
+$(CLIENT_KEY_FILE) $(CLIENT_CERT_FILE): $(CA_KEY_FILE) $(CA_CERT_FILE) | certs-dir
+	@echo "Generating client certificate signed by CA..."
+	openssl req -newkey rsa:2048 -keyout $(CLIENT_KEY_FILE) -out $(CERT_DIR)/client.csr \
+		-nodes -subj "/CN=cpp-motd-client" 2>/dev/null
+	openssl x509 -req -in $(CERT_DIR)/client.csr -CA $(CA_CERT_FILE) -CAkey $(CA_KEY_FILE) \
+		-CAcreateserial -out $(CLIENT_CERT_FILE) -days 365 -sha256 2>/dev/null
+	@rm -f $(CERT_DIR)/client.csr
 
 # Clean build artifacts
 clean:
@@ -88,4 +112,4 @@ help:
 	@echo "  make distclean  - Remove build artifacts and generated files"
 	@echo "  make help       - Show this help message"
 
-.PHONY: all build clean distclean directories help
+.PHONY: all build clean distclean directories certs certs-dir help
