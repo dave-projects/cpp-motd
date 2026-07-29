@@ -8,12 +8,14 @@
 #include <boost/shared_ptr.hpp>
 #include <boost/asio/spawn.hpp>
 #include <boost/json.hpp>
+#include <boost/program_options.hpp>
 #include <memory>
 #include <openssl/ssl.h>
 #include <openssl/x509.h>
 #include <openssl/x509v3.h>
 
 namespace json = boost::json;
+namespace po = boost::program_options;
 
 class ConnectionHandler : public boost::enable_shared_from_this<ConnectionHandler> {
 public:
@@ -48,11 +50,12 @@ private:
     void handle_handshake(const boost::system::error_code& error) {
         if (!error) {
             std::string client_cn = get_client_common_name();
-            std::cout << "SSL handshake successful with client: " << client_cn << std::endl;
+            logger_->info(std::string("SSL handshake successful with client: ") + client_cn);
+
             // Start reading data after successful handshake
             async_read_request();
         } else {
-            std::cerr << "Handshake failed: " << error.message() << std::endl;
+            logger_->info(std::string("Handshake failed: ") + error.message());
         }
     }
 
@@ -84,8 +87,6 @@ private:
     }
     
     void handle_read(const boost::system::error_code& error, size_t bytes_transferred) {
-        std::cout << "handle_read called with error: " << error.message() << ", bytes: " << bytes_transferred << std::endl;
-        
         if (!error && bytes_transferred > 0) {
             try {
                 // Extract data from streambuf
@@ -96,8 +97,6 @@ private:
                 std::string method, path, http_version;
                 std::istringstream iss(request_str);
                 iss >> method >> path >> http_version;
-                
-                std::cout << "Method: " << method << ", Path: " << path << std::endl;
                 
                 // Get client IP
                 std::string client_ip = ssl_socket_.lowest_layer().remote_endpoint().address().to_string();
@@ -142,18 +141,18 @@ private:
                     boost::bind(&ConnectionHandler::handle_write, shared_from_this(),
                         boost::asio::placeholders::error));
             } catch (const std::exception& e) {
-                std::cerr << "Request processing error: " << e.what() << std::endl;
+                logger_->info(std::string("Request processing error in handle_read: ") + e.what());
                 close_connection();
             }
         } else if (error) {
-            std::cerr << "Read error: " << error.message() << std::endl;
+            logger_->info(std::string("Read error in handle_read: ") + error.message());
             close_connection();
         }
     }
     
     void handle_write(const boost::system::error_code& error) {
         if (error) {
-            std::cerr << "Write error: " << error.message() << std::endl;
+            logger_->info(std::string("Write error in handle_write: ") + error.message());
         }
         // Properly shutdown SSL connection after write completes
         shutdown_ssl();
@@ -168,7 +167,7 @@ private:
     
     void handle_shutdown(const boost::system::error_code& error) {
         if (error) {
-            std::cout << "SSL shutdown error: " << error.message() << std::endl;
+            logger_->info(std::string("SSL shutdown error: ") + error.message());
         }
         // Close the underlying socket
         close_connection();
@@ -347,12 +346,38 @@ void MOTDServer::write_motd(const std::string& motd) {
 int main(int argc, char* argv[]) {
     try {
         boost::asio::io_context io_context;
-        
         int port = 8443;
-        if (argc > 1) {
-            port = std::atoi(argv[1]);
+
+        po::options_description description("Usage: motd-server [-p port]");
+        description.add_options()
+            ("help,?", "Display this help message")
+            ("version,v", "Show version")
+            ("port,p", po::value<int>()->default_value(8443), "Port to use");
+
+        po::variables_map vm;
+        po::store(po::command_line_parser(argc, argv).options(description).run(), vm);
+        po::notify(vm);
+
+        if (vm.count("help")) {
+            std::cout << description;
+            return 0;
         }
-        
+
+        if (vm.count("version")) {
+            std::cout << "Version 1.0" << std::endl;
+            return 0;
+        }
+
+        if (vm.count("port")) {
+            if ((vm["port"].as<int>() > 0) && (vm["port"].as<int>() < 65535)) {
+                port = vm["port"].as<int>();
+            }
+            else {
+                std::cerr << "Error: invalid port number" << std::endl;
+                return 1;
+            }
+        }
+
         MOTDServer server(io_context, port,
                          "certs/server.crt",
                          "certs/server.key",
@@ -364,7 +389,12 @@ int main(int argc, char* argv[]) {
         
         server.start();
         io_context.run();
-    } catch (std::exception& e) {
+    }
+    catch (po::error const& e) {
+        std::cerr << "Error: " << e.what() << std::endl;
+        return 1;
+    }
+    catch (std::exception& e) {
         std::cerr << "Exception: " << e.what() << std::endl;
         return 1;
     }

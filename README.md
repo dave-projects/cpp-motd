@@ -62,7 +62,7 @@ This will compile:
 ```
 
 The server will:
-- Listen on `https://localhost:8443`
+- Listen on `https://localhost:8443` (where the port is configurable)
 - Store MOTD in `data/motd.txt`
 - Log activity to `logs/motd.log`
 - Require a valid client certificate signed by the local CA
@@ -78,21 +78,13 @@ make certs
 ### Get the current MOTD
 
 ```bash
-./bin/motd-client --get
+./bin/motd-client -g
 ```
 
 ### Set a new MOTD
 
 ```bash
-./bin/motd-client --set "Your new message here"
-```
-
-### Verify SSL (development only)
-
-For development, the client can skip server certificate verification:
-
-```bash
-./bin/motd-client --get --insecure
+./bin/motd-client -s "Your new message here"
 ```
 
 ## API Endpoints
@@ -153,13 +145,13 @@ make build
 ./bin/motd-server &
 
 # Get the current MOTD
-./bin/motd-client --get
+./bin/motd-client -g
 
 # Set a new MOTD
-./bin/motd-client --set "System maintenance window: 2-4 PM UTC"
+./bin/motd-client -s "System maintenance window: 2-4 PM UTC"
 
 # Get the updated MOTD
-./bin/motd-client --get
+./bin/motd-client -g
 
 # Check the logs
 cat logs/motd.log
@@ -179,7 +171,6 @@ make distclean  # Remove build artifacts and generated certificates/logs
 
 - **Development**: The server generates self-signed certificates for development purposes
 - **Production**: Replace certificates with proper CA-signed certificates
-- **Access Control**: For production, implement authentication and authorization
 - **HTTPS**: All communications are encrypted over HTTPS (TLS 1.2+)
 
 ## License

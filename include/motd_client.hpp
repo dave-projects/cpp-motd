@@ -13,7 +13,7 @@ namespace http = boost::beast::http;
 
 class MOTDClient {
 public:
-    MOTDClient(const std::string& host, const std::string& port, bool verify_ssl = true);
+    MOTDClient(const std::string& host, const std::string& port);
     
     std::string get_motd();
     bool set_motd(const std::string& motd);
@@ -21,7 +21,6 @@ public:
 private:
     std::string host_;
     std::string port_;
-    bool verify_ssl_;
     
     std::string send_request(const std::string& method, const std::string& path,
                             const std::string& body = "");

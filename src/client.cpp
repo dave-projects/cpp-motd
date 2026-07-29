@@ -3,11 +3,13 @@
 #include <sstream>
 #include <boost/bind/bind.hpp>
 #include <boost/json.hpp>
+#include <boost/program_options.hpp>
 
 namespace json = boost::json;
+namespace po = boost::program_options;
 
-MOTDClient::MOTDClient(const std::string& host, const std::string& port, bool verify_ssl)
-    : host_(host), port_(port), verify_ssl_(verify_ssl) {}
+MOTDClient::MOTDClient(const std::string& host, const std::string& port)
+    : host_(host), port_(port) {}
 
 std::string MOTDClient::get_motd() {
     try {
@@ -65,12 +67,8 @@ std::string MOTDClient::send_request(const std::string& method, const std::strin
     ctx.use_certificate_chain_file("certs/client.crt");
     ctx.use_private_key_file("certs/client.key", ssl::context::pem);
     
-    if (!verify_ssl_) {
-        ctx.set_verify_mode(ssl::context::verify_none);
-    } else {
-        ctx.load_verify_file("certs/ca.crt");
-        ctx.set_verify_mode(ssl::context::verify_peer);
-    }
+    ctx.load_verify_file("certs/ca.crt");
+    ctx.set_verify_mode(ssl::context::verify_peer);
     
     // Resolve host
     tcp::resolver resolver(io_context);
@@ -123,32 +121,53 @@ std::string MOTDClient::send_request(const std::string& method, const std::strin
 
 // Main client program
 int main(int argc, char* argv[]) {
+
+    std::string host, port, command, message;
+
     try {
-        if (argc < 2) {
-            std::cout << "Usage: motd-client [--get|--set message]" << std::endl;
-            std::cout << "Options:" << std::endl;
-            std::cout << "  --get              Get the current message of the day" << std::endl;
-            std::cout << "  --set MESSAGE      Set a new message of the day" << std::endl;
-            std::cout << "  --insecure         Disable SSL certificate verification" << std::endl;
+        po::options_description description("Usage: motd-client [-h host] [-p port] -g|-s [message]");
+        description.add_options()
+            ("help,?", "Display this help message")
+            ("version,v", "Show version")
+            ("host,h", po::value<std::string>()->default_value("localhost"), "Host on which the server is running")
+            ("port,p", po::value<int>()->default_value(8443), "Port to use")
+            ("get,g",  "Command to get the current message of the day")
+            ("set,s",  po::value<std::string>(), "Command to set a new message of the day");
+
+        po::variables_map vm;
+        po::store(po::command_line_parser(argc, argv).options(description).run(), vm);
+        po::notify(vm);
+
+        if (vm.count("help")) {
+            std::cout << description;
+            return 0;
+        }
+
+        if (vm.count("version")) {
+            std::cout << "Version 1.0" << std::endl;
+            return 0;
+        }
+
+        if (!vm.count("get") && !vm.count("set")) {
+            std::cerr << "Error: a --get or --set command must be specified, for help use --help option" << std::endl;
             return 1;
         }
-        
-        std::string host = "localhost";
-        std::string port = "8443";
-        bool verify_ssl = true;
-        std::string command = argv[1];
-        
-        // Parse arguments
-        for (int i = 1; i < argc; ++i) {
-            std::string arg = argv[i];
-            if (arg == "--insecure") {
-                verify_ssl = false;
+
+        if (vm.count("port")) {
+            if ((vm["port"].as<int>() > 0) && (vm["port"].as<int>() < 65535)) {
+                port = std::to_string(vm["port"].as<int>());
+            }
+            else {
+                std::cerr << "Error: invalid port number" << std::endl;
+                return 1;
             }
         }
+
+        host = vm["host"].as<std::string>();
+
+        MOTDClient client(host, port);
         
-        MOTDClient client(host, port, verify_ssl);
-        
-        if (command == "--get") {
+        if (vm.count("get")) {
             std::string motd = client.get_motd();
             if (!motd.empty()) {
                 std::cout << "Current MOTD: " << motd << std::endl;
@@ -156,14 +175,9 @@ int main(int argc, char* argv[]) {
                 std::cerr << "Failed to retrieve MOTD" << std::endl;
                 return 1;
             }
-        } else if (command == "--set") {
-            if (argc < 3) {
-                std::cerr << "Error: --set requires a message argument" << std::endl;
-                return 1;
-            }
-            
-            std::string message = argv[2];
-            
+        } else if (vm.count("set")) {
+            message = vm["set"].as<std::string>();
+
             if (client.set_motd(message)) {
                 std::cout << "MOTD successfully updated to: " << message << std::endl;
             } else {
@@ -174,10 +188,15 @@ int main(int argc, char* argv[]) {
             std::cerr << "Unknown command: " << command << std::endl;
             return 1;
         }
-    } catch (std::exception& e) {
+    } 
+    catch (po::error const& e) {
+        std::cerr << "Error: " << e.what() << std::endl;
+        return 1;
+    }
+    catch (std::exception& e) {
         std::cerr << "Exception: " << e.what() << std::endl;
         return 1;
     }
-    
+	    
     return 0;
 }
