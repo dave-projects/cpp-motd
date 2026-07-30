@@ -26,19 +26,23 @@ public:
     void stop();
     
 private:
+    // The event loop
     boost::asio::io_context& io_context_;
+
+    // Boost TCP acceptor for accepting new socket connections
     std::unique_ptr<tcp::acceptor> acceptor_;
+
+    // Access to the Logger class
     std::shared_ptr<Logger> logger_;
+
     std::string motd_file_;
-    std::string current_motd_;
     
     ssl::context& get_ssl_context();
     void accept_connection();
     void handle_connection(boost::shared_ptr<ConnectionHandler> connection,
                           const boost::system::error_code& error);
-    std::string read_motd();
-    void write_motd(const std::string& motd);
     
+    // Manages SSL/TLS
     std::unique_ptr<ssl::context> ssl_context_;
 };
 

@@ -17,10 +17,14 @@
 namespace json = boost::json;
 namespace po = boost::program_options;
 
+// Class for handling the connection
+// Derived from boost::enabled_shared_from_this (allows a shared_ptr to the current
+// object to be obtained from within a member function).
 class ConnectionHandler : public boost::enable_shared_from_this<ConnectionHandler> {
 public:
     typedef boost::shared_ptr<ConnectionHandler> pointer;
     
+    // Function to create a new connection handler
     static pointer create(boost::asio::io_context& io_context,
                          ssl::context& context,
                          std::shared_ptr<Logger> logger,
@@ -28,10 +32,12 @@ public:
         return pointer(new ConnectionHandler(io_context, context, logger, motd_file));
     }
     
+    // Function to obtain access to the underlying socket
     ssl::stream<tcp::socket>::lowest_layer_type& socket() {
         return ssl_socket_.lowest_layer();
     }
     
+    // Function to start the aynchronous SSL handshake, passing a reference to the handler function
     void start() {
         ssl_socket_.async_handshake(ssl::stream_base::server,
             boost::bind(&ConnectionHandler::handle_handshake, shared_from_this(),
@@ -47,6 +53,7 @@ private:
           logger_(logger),
           motd_file_(motd_file) {}
     
+    // Callback function invoked which reports on whether the SSL was established or not
     void handle_handshake(const boost::system::error_code& error) {
         if (!error) {
             std::string client_cn = get_client_common_name();
@@ -59,6 +66,7 @@ private:
         }
     }
 
+    // Helper function to obtain the CN from the client certificate provided by the client end
     std::string get_client_common_name() {
         X509* cert = SSL_get_peer_certificate(ssl_socket_.native_handle());
         if (!cert) {
@@ -76,8 +84,10 @@ private:
         return std::string(cn);
     }
     
+    // Function to start an asynchronous socket read, passing a reference to the handle_read function
     void async_read_request() {
         // Use a streambuf for proper HTTP message handling
+        // Wait for at least one byte to be received before invoking the handle_read callback
         boost::asio::async_read(ssl_socket_,
             buffer_,
             boost::asio::transfer_at_least(1),
@@ -86,6 +96,7 @@ private:
                 boost::asio::placeholders::bytes_transferred));
     }
     
+    // Callback function to handle data received by the socket
     void handle_read(const boost::system::error_code& error, size_t bytes_transferred) {
         if (!error && bytes_transferred > 0) {
             try {
@@ -135,7 +146,8 @@ private:
                     logger_->log(client_ip, method, path, status_code, "Invalid request");
                 }
                 
-                // Send response
+                // Ask boost to send an asynchronous response, passing a reference
+                // to the handle_write callback function to be called once the data has been sent
                 boost::asio::async_write(ssl_socket_,
                     boost::asio::buffer(response),
                     boost::bind(&ConnectionHandler::handle_write, shared_from_this(),
@@ -150,6 +162,7 @@ private:
         }
     }
     
+    // Callback function invoked once a write has been completed (or failed)
     void handle_write(const boost::system::error_code& error) {
         if (error) {
             logger_->info(std::string("Write error in handle_write: ") + error.message());
@@ -158,6 +171,8 @@ private:
         shutdown_ssl();
     }
     
+    // Function to gracefully shutdown the SSL socket, passing a reference to the handle_shutdown
+    // callback function which will be called once the SSL has been shutdown
     void shutdown_ssl() {
         // Initiate SSL shutdown
         ssl_socket_.async_shutdown(
@@ -165,6 +180,7 @@ private:
                 boost::asio::placeholders::error));
     }
     
+    // Callback function to close the socket once the SSL layer has been shutdown
     void handle_shutdown(const boost::system::error_code& error) {
         if (error) {
             logger_->info(std::string("SSL shutdown error: ") + error.message());
@@ -173,13 +189,16 @@ private:
         close_connection();
     }
     
+    // Function to close the underlying socket
     void close_connection() {
         boost::system::error_code ec;
         ssl_socket_.lowest_layer().close(ec);
     }
     
+    // Function to handle the get request from the client
     std::string handle_get() {
         try {
+            // Read the current message of the day from the file
             std::ifstream file(motd_file_);
             std::string motd;
             if (file.is_open()) {
@@ -189,6 +208,7 @@ private:
                 motd = "Welcome to the system!";
             }
             
+            // Create the HTTP body response
             json::object response;
             response["motd"] = motd;
             std::string body = json::serialize(response);
@@ -199,6 +219,7 @@ private:
         }
     }
     
+    // Function to handle the put request from the client
     std::string handle_put(const std::string& body, std::string& details) {
         try {
             // Remove HTTP headers from body if present
@@ -212,16 +233,18 @@ private:
             json::object request = json::parse(clean_body).as_object();
             std::string new_motd = json::value_to<std::string>(request.at("motd"));
             
-            // Write to file
+            // Write the new message of the day to the file
             std::ofstream file(motd_file_);
             file << new_motd;
             file.close();
             
+            // Log the update
             details = "Updated MOTD to '" + new_motd.substr(0, 50) + "'";
             if (new_motd.length() > 50) {
                 details += "...";
             }
-            
+           
+            // Create the HTTP body response 
             json::object response;
             response["status"] = "success";
             response["motd"] = new_motd;
@@ -233,6 +256,7 @@ private:
         }
     }
     
+    // Function to create the HTTP response string
     std::string create_http_response(int status_code, const std::string& status_text,
                                     const std::string& body) {
         std::ostringstream oss;
@@ -245,6 +269,7 @@ private:
         return oss.str();
     }
     
+    // Function to create an HTTP error response
     std::string create_error_response(int status_code, const std::string& message) {
         json::object error;
         error["error"] = message;
@@ -258,6 +283,7 @@ private:
     boost::asio::streambuf buffer_;
 };
 
+// Class for the Message Of The Day Server
 MOTDServer::MOTDServer(boost::asio::io_context& io_context, int port,
                        const std::string& cert_file, const std::string& key_file,
                        const std::string& motd_file, const std::string& log_file)
@@ -278,19 +304,18 @@ MOTDServer::MOTDServer(boost::asio::io_context& io_context, int port,
     ssl_context_->load_verify_file("certs/ca.crt");
     ssl_context_->set_verify_mode(ssl::verify_peer | ssl::verify_fail_if_no_peer_cert);
     
-    // Load initial MOTD
-    current_motd_ = read_motd();
-    
     // Create acceptor
     tcp::endpoint endpoint(tcp::v4(), port);
     acceptor_ = std::make_unique<tcp::acceptor>(io_context, endpoint);
     logger_->info("Server listening on port " + std::to_string(port));
 }
 
+// Function called on startup to start listening for socket connections
 void MOTDServer::start() {
     accept_connection();
 }
 
+// Function to stop the server
 void MOTDServer::stop() {
     if (acceptor_) {
         acceptor_->close();
@@ -298,6 +323,8 @@ void MOTDServer::stop() {
     logger_->info("Server stopped");
 }
 
+// Function to start a listening socket, passing a reference to the handle_connection
+// callback function to be called when a new socket connection request arrives
 void MOTDServer::accept_connection() {
     ConnectionHandler::pointer new_connection =
         ConnectionHandler::create(io_context_, *ssl_context_, logger_, motd_file_);
@@ -308,38 +335,18 @@ void MOTDServer::accept_connection() {
             boost::asio::placeholders::error));
 }
 
+// Callback function invoked when a new client socket is connected 
 void MOTDServer::handle_connection(ConnectionHandler::pointer connection,
                                    const boost::system::error_code& error) {
     if (!error) {
+        // Start the SSL handshake
         connection->start();
     } else {
         logger_->info("Accept error: " + error.message());
     }
+
+    // Start a new listening socket
     accept_connection();
-}
-
-std::string MOTDServer::read_motd() {
-    try {
-        std::ifstream file(motd_file_);
-        std::string motd;
-        if (file.is_open()) {
-            std::getline(file, motd);
-            file.close();
-            return motd;
-        }
-    } catch (const std::exception&) {}
-    return "Welcome to the system!";
-}
-
-void MOTDServer::write_motd(const std::string& motd) {
-    try {
-        std::ofstream file(motd_file_);
-        file << motd;
-        file.close();
-        current_motd_ = motd;
-    } catch (const std::exception& e) {
-        logger_->info(std::string("Error writing MOTD: ") + e.what());
-    }
 }
 
 // Main server program
@@ -348,6 +355,7 @@ int main(int argc, char* argv[]) {
         boost::asio::io_context io_context;
         int port = 8443;
 
+        // Use boost::program_options to parse the command line options
         po::options_description description("Usage: motd-server [-p port]");
         description.add_options()
             ("help,?", "Display this help message")
@@ -378,6 +386,7 @@ int main(int argc, char* argv[]) {
             }
         }
 
+        // Create the server class
         MOTDServer server(io_context, port,
                          "certs/server.crt",
                          "certs/server.key",
@@ -387,6 +396,7 @@ int main(int argc, char* argv[]) {
         std::cout << "MOTD Server starting on port " << port << std::endl;
         std::cout << "Press Ctrl+C to stop" << std::endl;
         
+        // Start the server and run the io_context event loop
         server.start();
         io_context.run();
     }

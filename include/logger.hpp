@@ -24,6 +24,7 @@ public:
         }
     }
 
+    // Function to log a message of the day request
     void log(const std::string& client_ip, const std::string& method, 
              const std::string& path, int status_code, 
              const std::string& details) {
@@ -53,6 +54,7 @@ public:
         }
     }
 
+    // General purpose log function
     void info(const std::string& message) {
         std::lock_guard<std::mutex> lock(log_mutex);
         

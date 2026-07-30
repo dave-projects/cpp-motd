@@ -11,11 +11,13 @@ namespace po = boost::program_options;
 MOTDClient::MOTDClient(const std::string& host, const std::string& port)
     : host_(host), port_(port) {}
 
+// Function to get the current message of the day
 std::string MOTDClient::get_motd() {
     try {
         std::string response = send_request("GET", "/motd");
         
-        // Parse JSON response
+        // Parse JSON response - we are looking to extract the motd value
+        // from the JSON body returned in the HTTP response
         size_t body_start = response.find("\r\n\r\n");
         if (body_start != std::string::npos) {
             std::string body = response.substr(body_start + 4);
@@ -28,6 +30,7 @@ std::string MOTDClient::get_motd() {
     return "";
 }
 
+// Function to set a new message of the day
 bool MOTDClient::set_motd(const std::string& motd) {
     try {
         json::object request;
@@ -36,7 +39,7 @@ bool MOTDClient::set_motd(const std::string& motd) {
         
         std::string response = send_request("PUT", "/motd", request_body);
         
-        // Parse JSON response
+        // Parse JSON response looking for the status in the JSON body
         size_t body_start = response.find("\r\n\r\n");
         if (body_start != std::string::npos) {
             std::string body = response.substr(body_start + 4);
@@ -54,6 +57,7 @@ bool MOTDClient::set_motd(const std::string& motd) {
     return false;
 }
 
+// Function to send an HTTP request
 std::string MOTDClient::send_request(const std::string& method, const std::string& path,
                                      const std::string& body) {
     boost::asio::io_context io_context;
@@ -64,9 +68,12 @@ std::string MOTDClient::send_request(const std::string& method, const std::strin
         ssl::context::default_workarounds |
         ssl::context::no_sslv2 |
         ssl::context::single_dh_use);
+
+    // Load the client certificate and key
     ctx.use_certificate_chain_file("certs/client.crt");
     ctx.use_private_key_file("certs/client.key", ssl::context::pem);
     
+    // Load the CA
     ctx.load_verify_file("certs/ca.crt");
     ctx.set_verify_mode(ssl::context::verify_peer);
     
@@ -125,6 +132,7 @@ int main(int argc, char* argv[]) {
     std::string host, port, command, message;
 
     try {
+        // Use boost::program_options to parse the command line options
         po::options_description description("Usage: motd-client [-h host] [-p port] -g|-s [message]");
         description.add_options()
             ("help,?", "Display this help message")
